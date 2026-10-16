@@ -1,7 +1,7 @@
 # Thesan Aircare VMC — Home Assistant
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
-![Version](https://img.shields.io/badge/version-1.3.0-blue)
+![Version](https://img.shields.io/badge/version-1.4.0-blue)
 
 Integrazione **non ufficiale** per le VMC decentralizzate **Savio / Thesan Aircare ES** (versione Wi‑Fi, app "Aircare", backend cloud Domotica Labs).
 Controllo di velocità e modalità, lettura di temperatura e umidità interna/esterna, stato filtro, con aggiornamento in tempo reale.
@@ -14,6 +14,7 @@ Controllo di velocità e modalità, lettura di temperatura e umidità interna/es
 
 ### Cosa fa
 - **Ventola** `fan.vmc_<stanza>`: on/off e velocità 1–5
+- **Velocità** `number.vmc_<stanza>_velocita`: la velocità come numero 0–5 (0 = spenta), comoda nell'editor visuale delle automazioni
 - **Modalità** `select.vmc_<stanza>_modalita`: Auto / Manuale / Immissione / Estrazione
 - **Sensori**: temperatura interna ed esterna (°C), umidità interna ed esterna (%), stato filtro
 - **Connesso** (diagnostica): la VMC risponde al cloud; attributi che spiegano cosa succede
@@ -61,7 +62,7 @@ Progetto indipendente, non affiliato a Savio, Thesan o Domotica Labs.
 Unofficial Home Assistant integration for **Savio / Thesan Aircare ES** decentralised ventilation
 units (Wi‑Fi version, "Aircare" app, Domotica Labs cloud backend).
 
-**Features**: fan on/off and speed 1–5, mode select (Auto / Manual / Supply / Extract), indoor and
+**Features**: fan on/off and speed 1–5, speed as a 0–5 number entity (handy in the automation editor), mode select (Auto / Manual / Supply / Extract), indoor and
 outdoor temperature and humidity, filter counter, connectivity diagnostics. Real‑time state via
 MQTT with REST fallback. The integration periodically sends the `transmit` wake‑up command, exactly
 like the official app does, so data keeps flowing with the app closed.
@@ -75,5 +76,3 @@ the integration recovers automatically. Avoid manual logins and repeated reloads
 account block). Example dashboard in `dashboards/` (needs *button-card*).
 
 Independent project, not affiliated with Savio, Thesan or Domotica Labs. MIT licence.
-# hass-thesan-aircare
-# hass-thesan-aircare

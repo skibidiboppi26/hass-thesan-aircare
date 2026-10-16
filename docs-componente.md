@@ -1,4 +1,4 @@
-# Thesan Aircare VMC — integrazione Home Assistant (v1.3.0)
+# Thesan Aircare VMC — integrazione Home Assistant (v1.4.0)
 
 Controllo delle VMC Savio/Thesan Aircare ES (backend cloud Domotica Labs).
 
@@ -24,6 +24,7 @@ Aggiornando da una versione precedente **non** serve reinserire le credenziali.
 | Entità | Cosa fa |
 |---|---|
 | `fan.vmc_<stanza>` | on/off + velocità 1–5 (percentuale 20/40/60/80/100) |
+| `number.vmc_<stanza>_velocita` | velocità come numero 0–5 (0 = spenta): comoda nell'editor delle automazioni e nelle dashboard |
 | `select.vmc_<stanza>_modalita` | Auto / Manuale / Immissione / Estrazione |
 | `sensor.vmc_<stanza>_temperatura_interna/esterna` | °C |
 | `sensor.vmc_<stanza>_umidita_interna/esterna` | % |
@@ -32,7 +33,7 @@ Aggiornando da una versione precedente **non** serve reinserire le credenziali.
 
 ## Comportamento a regime (perché "funziona sempre")
 
-- **Push MQTT come fonte primaria** (v1.3.0): velocità, modalità, temperature, umidità,
+- **Push MQTT come fonte primaria** (v1.4.0): velocità, modalità, temperature, umidità,
   filtro e stato online arrivano dalle macchine appena cambiano, senza passare dalla
   cache REST del cloud (che periodicamente si svuota). Se la sessione MQTT cade, paho
   riconnette e risottoscrive da solo; nel frattempo il REST continua a leggere.

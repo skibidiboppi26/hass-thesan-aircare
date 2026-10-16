@@ -28,6 +28,7 @@ from .api import (
 # e non nell'event loop (evita l'avviso "blocking call to import_module").
 from . import binary_sensor as _binary_sensor  # noqa: F401, E402
 from . import fan as _fan  # noqa: F401, E402
+from . import number as _number  # noqa: F401, E402
 from . import select as _select  # noqa: F401, E402
 from . import sensor as _sensor  # noqa: F401, E402
 
@@ -48,7 +49,7 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = [Platform.FAN, Platform.SELECT, Platform.SENSOR, Platform.BINARY_SENSOR]
+PLATFORMS = [Platform.FAN, Platform.NUMBER, Platform.SELECT, Platform.SENSOR, Platform.BINARY_SENSOR]
 
 # Proprieta' usate per capire se uno snapshot e' "vuoto"
 _PLAUSIBILITY_KEYS = ("temp_int", "temp_ext", "hr_int", "speed", "mode")
