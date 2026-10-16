@@ -1,0 +1,933 @@
+# ------------------------------------------------------------------
+# Dashboard "Ventilazione" — VMC Thesan Aircare
+# Richiede: button-card gia' installata in /config/www/button-card.js
+#           e registrata come risorsa /local/button-card.js (fatto).
+#
+# Come si carica:
+#   Impostazioni -> Dashboard -> (la dashboard delle VMC) -> apri
+#   -> matita -> tre puntini -> "Modifica in YAML"
+#   -> incolla TUTTO questo file -> Salva.
+#
+# Se un'entita' risulta "sconosciuta": apri l'entita' in HA
+# (Impostazioni -> Dispositivi e servizi -> Thesan Aircare -> la VMC),
+# ingranaggio -> "ID entita'", e correggi qui sotto. Gli id compaiono
+# solo nel blocco "variables:" di ogni scheda e nei tre pulsanti - / power / +.
+# ------------------------------------------------------------------
+
+button_card_templates:
+
+  # ---------- scheda principale di una VMC (quadrante + letture) -------
+  vmc_dial:
+    show_icon: false
+    show_name: false
+    show_state: false
+    tap_action:
+      action: navigate
+      navigation_path: "[[[ return window.location.pathname.split('/').slice(0,2).join('/') + '/vmc-' + variables.slug; ]]]"
+    hold_action:
+      action: more-info
+    styles:
+      card:
+        - padding: 12px 12px 10px 12px
+        - border-radius: 18px
+      grid:
+        - grid-template-areas: '"head" "dial" "env" "filt"'
+        - grid-template-columns: 1fr
+        - gap: 8px
+      custom_fields:
+        head:
+          - justify-self: stretch
+        dial:
+          - justify-self: center
+        env:
+          - justify-self: stretch
+        filt:
+          - justify-self: stretch
+    custom_fields:
+      head: |
+        [[[
+          var fe   = states[variables.fan];
+          var sp   = fe ? Math.round((fe.attributes.percentage || 0) / 20) : 0;
+          var mode = states[variables.mode] ? states[variables.mode].state : '';
+          var lab  = sp > 0 ? mode : 'Spenta';
+          var col  = sp > 0 ? 'var(--primary-color)' : 'var(--secondary-text-color)';
+          var bg   = sp > 0 ? 'rgba(var(--rgb-primary-color),.14)' : 'var(--divider-color)';
+          return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+                    <span style="font-size:15px;font-weight:600">${variables.title}</span>
+                    <span style="display:flex;align-items:center;gap:8px">
+                      <span style="font-size:11px;font-weight:600;color:${col};background:${bg};
+                                   padding:3px 8px;border-radius:999px;white-space:nowrap">${lab}</span>
+                      <span style="display:flex;align-items:center;justify-content:center;width:30px;height:30px;
+                                   border-radius:50%;border:1px solid var(--divider-color);color:var(--secondary-text-color)">
+                        <ha-icon icon="mdi:chart-line" style="--mdc-icon-size:17px"></ha-icon>
+                      </span>
+                    </span>
+                  </div>`;
+        ]]]
+      dial: |
+        [[[
+          var fe  = states[variables.fan];
+          var sp  = fe ? Math.round((fe.attributes.percentage || 0) / 20) : 0;
+          var col = sp > 0 ? 'var(--primary-color)' : 'var(--disabled-text-color)';
+          var num = sp > 0 ? 'var(--primary-text-color)' : 'var(--disabled-text-color)';
+          var lab = sp > 0 ? 'velocita' : 'spenta';
+          var tick = function(a){
+            return `<rect x="73.5" y="26" width="3" height="16" fill="var(--card-background-color)"
+                          transform="rotate(${a} 75 100)"/>`;
+          };
+          return `<div style="position:relative;width:150px;height:116px">
+            <svg viewBox="0 0 150 118" style="width:100%;height:100%">
+              <path d="M15 100 A64 64 0 1 1 135 100" fill="none"
+                    stroke="var(--divider-color)" stroke-width="12" stroke-linecap="round"/>
+              <path d="M15 100 A64 64 0 1 1 135 100" fill="none" pathLength="100"
+                    stroke="${col}" stroke-width="12" stroke-linecap="round"
+                    stroke-dasharray="${sp*20} 100"/>
+              ${tick(-54)}${tick(-18)}${tick(18)}${tick(54)}
+            </svg>
+            <div style="position:absolute;left:0;right:0;top:42px;text-align:center;line-height:1">
+              <div style="font-size:40px;font-weight:600;letter-spacing:-.03em;color:${num}">${sp}</div>
+              <div style="font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;
+                          color:var(--secondary-text-color);margin-top:6px">${lab}</div>
+            </div>
+          </div>`;
+        ]]]
+      env: |
+        [[[
+          var f = function(e, d){
+            var s = states[e];
+            if (!s || isNaN(parseFloat(s.state))) return '--';
+            return parseFloat(s.state).toFixed(d).replace('.', ',');
+          };
+          var hv = parseFloat(states[variables.hum_in] ? states[variables.hum_in].state : 'x');
+          var hc = (!isNaN(hv) && hv >= 80) ? 'var(--error-color)' : 'var(--primary-text-color)';
+          return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;
+                              border-top:1px solid var(--divider-color);padding-top:8px;font-size:13px">
+            <div style="display:flex;align-items:center;gap:5px">
+              <ha-icon icon="mdi:thermometer" style="--mdc-icon-size:15px;color:#E0903C"></ha-icon>
+              <span style="font-weight:500">${f(variables.temp_in,1)}&deg;</span>
+              <span style="color:var(--secondary-text-color);font-size:11px;margin-left:auto">${f(variables.temp_out,1)}&deg; fuori</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:5px">
+              <ha-icon icon="mdi:water-outline" style="--mdc-icon-size:15px;color:#4C94DE"></ha-icon>
+              <span style="font-weight:500;color:${hc}">${f(variables.hum_in,1)} %</span>
+            </div>
+          </div>`;
+        ]]]
+      filt: |
+        [[[
+          var v = parseInt(states[variables.filter] ? states[variables.filter].state : 0) || 0;
+          var w = Math.min(100, v);
+          var c = v >= 100 ? 'var(--error-color)' : (v >= 50 ? '#E0903C' : 'var(--success-color, #58C98B)');
+          var t = v >= 100 ? 'var(--error-color)' : 'var(--secondary-text-color)';
+          return `<div style="display:flex;align-items:center;gap:8px;font-size:11.5px;color:${t}">
+            <span>Filtro</span>
+            <div style="flex:1;height:4px;border-radius:2px;background:var(--divider-color);overflow:hidden">
+              <div style="height:100%;width:${w}%;background:${c}"></div>
+            </div>
+            <span>${v}</span>
+          </div>`;
+        ]]]
+
+  # ---------- pulsanti - / power / + ----------------------------------
+  vmc_btn:
+    show_name: false
+    show_state: false
+    styles:
+      card:
+        - height: 40px
+        - border-radius: 12px
+        - border: 1px solid var(--divider-color)
+      icon:
+        - width: 22px
+
+views:
+  - title: Ventilazione
+    path: vmc
+    icon: mdi:fan
+    type: sections
+    max_columns: 2
+    sections:
+
+      # ---- pannello umidita', a tutta larghezza ----
+      - type: grid
+        column_span: 2
+        cards:
+          - type: custom:button-card
+            show_icon: false
+            show_name: false
+            show_state: false
+            tap_action:
+              action: none
+            styles:
+              card:
+                - padding: 12px 14px
+                - border-radius: 14px
+              grid:
+                - grid-template-areas: '"t" "r_salone" "r_cucina" "r_cameretta" "r_camera"'
+                - grid-template-columns: 1fr
+                - gap: 8px
+            custom_fields:
+              t: |
+                [[[
+                  return `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">
+                    <span style="font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+                                 color:var(--secondary-text-color)">Umidita' interna</span>
+                    <span style="font-size:11.5px;color:var(--secondary-text-color)">soglie: 74 % rientro &middot; 80 % boost</span>
+                  </div>`;
+                ]]]
+              r_salone: |
+                [[[
+                  var e = states['sensor.vmc_salone_umidita_interna'];
+                  var v = e ? parseFloat(e.state) : NaN;
+                  if (isNaN(v)) v = 0;
+                  var c = v >= 80 ? 'var(--error-color)' : '#4C94DE';
+                  return `<div style="display:grid;grid-template-columns:92px 1fr 58px;gap:10px;align-items:center;font-size:13px">
+                    <span style="font-weight:500">Salone</span>
+                    <div style="position:relative;height:8px;border-radius:4px;background:var(--divider-color)">
+                      <div style="position:absolute;left:0;top:0;bottom:0;width:${Math.min(100,v)}%;border-radius:4px;background:${c}"></div>
+                      <div style="position:absolute;top:-4px;bottom:-4px;left:74%;width:2px;background:var(--secondary-text-color);opacity:.55"></div>
+                      <div style="position:absolute;top:-4px;bottom:-4px;left:80%;width:2px;background:var(--error-color)"></div>
+                    </div>
+                    <span style="text-align:right;font-weight:600;color:${c === 'var(--error-color)' ? c : 'var(--primary-text-color)'}">${v.toFixed(1).replace('.', ',')} %</span>
+                  </div>`;
+                ]]]
+              r_cucina: |
+                [[[
+                  var e = states['sensor.vmc_cucina_umidita_interna'];
+                  var v = e ? parseFloat(e.state) : NaN;
+                  if (isNaN(v)) v = 0;
+                  var c = v >= 80 ? 'var(--error-color)' : '#4C94DE';
+                  return `<div style="display:grid;grid-template-columns:92px 1fr 58px;gap:10px;align-items:center;font-size:13px">
+                    <span style="font-weight:500">Cucina</span>
+                    <div style="position:relative;height:8px;border-radius:4px;background:var(--divider-color)">
+                      <div style="position:absolute;left:0;top:0;bottom:0;width:${Math.min(100,v)}%;border-radius:4px;background:${c}"></div>
+                      <div style="position:absolute;top:-4px;bottom:-4px;left:74%;width:2px;background:var(--secondary-text-color);opacity:.55"></div>
+                      <div style="position:absolute;top:-4px;bottom:-4px;left:80%;width:2px;background:var(--error-color)"></div>
+                    </div>
+                    <span style="text-align:right;font-weight:600;color:${c === 'var(--error-color)' ? c : 'var(--primary-text-color)'}">${v.toFixed(1).replace('.', ',')} %</span>
+                  </div>`;
+                ]]]
+              r_cameretta: |
+                [[[
+                  var e = states['sensor.vmc_cameretta_umidita_interna'];
+                  var v = e ? parseFloat(e.state) : NaN;
+                  if (isNaN(v)) v = 0;
+                  var c = v >= 80 ? 'var(--error-color)' : '#4C94DE';
+                  return `<div style="display:grid;grid-template-columns:92px 1fr 58px;gap:10px;align-items:center;font-size:13px">
+                    <span style="font-weight:500">Cameretta</span>
+                    <div style="position:relative;height:8px;border-radius:4px;background:var(--divider-color)">
+                      <div style="position:absolute;left:0;top:0;bottom:0;width:${Math.min(100,v)}%;border-radius:4px;background:${c}"></div>
+                      <div style="position:absolute;top:-4px;bottom:-4px;left:74%;width:2px;background:var(--secondary-text-color);opacity:.55"></div>
+                      <div style="position:absolute;top:-4px;bottom:-4px;left:80%;width:2px;background:var(--error-color)"></div>
+                    </div>
+                    <span style="text-align:right;font-weight:600;color:${c === 'var(--error-color)' ? c : 'var(--primary-text-color)'}">${v.toFixed(1).replace('.', ',')} %</span>
+                  </div>`;
+                ]]]
+              r_camera: |
+                [[[
+                  var e = states['sensor.vmc_camera_umidita_interna'];
+                  var v = e ? parseFloat(e.state) : NaN;
+                  if (isNaN(v)) v = 0;
+                  var c = v >= 80 ? 'var(--error-color)' : '#4C94DE';
+                  return `<div style="display:grid;grid-template-columns:92px 1fr 58px;gap:10px;align-items:center;font-size:13px">
+                    <span style="font-weight:500">Camera</span>
+                    <div style="position:relative;height:8px;border-radius:4px;background:var(--divider-color)">
+                      <div style="position:absolute;left:0;top:0;bottom:0;width:${Math.min(100,v)}%;border-radius:4px;background:${c}"></div>
+                      <div style="position:absolute;top:-4px;bottom:-4px;left:74%;width:2px;background:var(--secondary-text-color);opacity:.55"></div>
+                      <div style="position:absolute;top:-4px;bottom:-4px;left:80%;width:2px;background:var(--error-color)"></div>
+                    </div>
+                    <span style="text-align:right;font-weight:600;color:${c === 'var(--error-color)' ? c : 'var(--primary-text-color)'}">${v.toFixed(1).replace('.', ',')} %</span>
+                  </div>`;
+                ]]]
+
+      # ---- VMC ----
+      - type: grid
+        cards:
+          - type: vertical-stack
+            cards:
+              - type: custom:button-card
+                template: vmc_dial
+                entity: fan.vmc_salone
+                variables:
+                  title: Salone
+                  slug: salone
+                  fan: fan.vmc_salone
+                  mode: select.vmc_salone_modalita
+                  temp_in: sensor.vmc_salone_temperatura_interna
+                  temp_out: sensor.vmc_salone_temperatura_esterna
+                  hum_in: sensor.vmc_salone_umidita_interna
+                  filter: sensor.vmc_salone_stato_filtro
+              - type: horizontal-stack
+                cards:
+                  - type: custom:button-card
+                    template: vmc_btn
+                    icon: mdi:minus
+                    tap_action:
+                      action: call-service
+                      service: fan.decrease_speed
+                      data:
+                        entity_id: fan.vmc_salone
+                  - type: custom:button-card
+                    template: vmc_btn
+                    entity: fan.vmc_salone
+                    icon: mdi:power
+                    tap_action:
+                      action: toggle
+                    state:
+                      - value: "on"
+                        styles:
+                          card:
+                            - background: var(--primary-color)
+                          icon:
+                            - color: var(--text-primary-color)
+                  - type: custom:button-card
+                    template: vmc_btn
+                    icon: mdi:plus
+                    tap_action:
+                      action: call-service
+                      service: fan.increase_speed
+                      data:
+                        entity_id: fan.vmc_salone
+          - type: vertical-stack
+            cards:
+              - type: custom:button-card
+                template: vmc_dial
+                entity: fan.vmc_cucina
+                variables:
+                  title: Cucina
+                  slug: cucina
+                  fan: fan.vmc_cucina
+                  mode: select.vmc_cucina_modalita
+                  temp_in: sensor.vmc_cucina_temperatura_interna
+                  temp_out: sensor.vmc_cucina_temperatura_esterna
+                  hum_in: sensor.vmc_cucina_umidita_interna
+                  filter: sensor.vmc_cucina_stato_filtro
+              - type: horizontal-stack
+                cards:
+                  - type: custom:button-card
+                    template: vmc_btn
+                    icon: mdi:minus
+                    tap_action:
+                      action: call-service
+                      service: fan.decrease_speed
+                      data:
+                        entity_id: fan.vmc_cucina
+                  - type: custom:button-card
+                    template: vmc_btn
+                    entity: fan.vmc_cucina
+                    icon: mdi:power
+                    tap_action:
+                      action: toggle
+                    state:
+                      - value: "on"
+                        styles:
+                          card:
+                            - background: var(--primary-color)
+                          icon:
+                            - color: var(--text-primary-color)
+                  - type: custom:button-card
+                    template: vmc_btn
+                    icon: mdi:plus
+                    tap_action:
+                      action: call-service
+                      service: fan.increase_speed
+                      data:
+                        entity_id: fan.vmc_cucina
+
+      # ---- VMC ----
+      - type: grid
+        cards:
+          - type: vertical-stack
+            cards:
+              - type: custom:button-card
+                template: vmc_dial
+                entity: fan.vmc_cameretta
+                variables:
+                  title: Cameretta
+                  slug: cameretta
+                  fan: fan.vmc_cameretta
+                  mode: select.vmc_cameretta_modalita
+                  temp_in: sensor.vmc_cameretta_temperatura_interna
+                  temp_out: sensor.vmc_cameretta_temperatura_esterna
+                  hum_in: sensor.vmc_cameretta_umidita_interna
+                  filter: sensor.vmc_cameretta_stato_filtro
+              - type: horizontal-stack
+                cards:
+                  - type: custom:button-card
+                    template: vmc_btn
+                    icon: mdi:minus
+                    tap_action:
+                      action: call-service
+                      service: fan.decrease_speed
+                      data:
+                        entity_id: fan.vmc_cameretta
+                  - type: custom:button-card
+                    template: vmc_btn
+                    entity: fan.vmc_cameretta
+                    icon: mdi:power
+                    tap_action:
+                      action: toggle
+                    state:
+                      - value: "on"
+                        styles:
+                          card:
+                            - background: var(--primary-color)
+                          icon:
+                            - color: var(--text-primary-color)
+                  - type: custom:button-card
+                    template: vmc_btn
+                    icon: mdi:plus
+                    tap_action:
+                      action: call-service
+                      service: fan.increase_speed
+                      data:
+                        entity_id: fan.vmc_cameretta
+          - type: vertical-stack
+            cards:
+              - type: custom:button-card
+                template: vmc_dial
+                entity: fan.vmc_camera
+                variables:
+                  title: Camera
+                  slug: camera
+                  fan: fan.vmc_camera
+                  mode: select.vmc_camera_modalita
+                  temp_in: sensor.vmc_camera_temperatura_interna
+                  temp_out: sensor.vmc_camera_temperatura_esterna
+                  hum_in: sensor.vmc_camera_umidita_interna
+                  filter: sensor.vmc_camera_stato_filtro
+              - type: horizontal-stack
+                cards:
+                  - type: custom:button-card
+                    template: vmc_btn
+                    icon: mdi:minus
+                    tap_action:
+                      action: call-service
+                      service: fan.decrease_speed
+                      data:
+                        entity_id: fan.vmc_camera
+                  - type: custom:button-card
+                    template: vmc_btn
+                    entity: fan.vmc_camera
+                    icon: mdi:power
+                    tap_action:
+                      action: toggle
+                    state:
+                      - value: "on"
+                        styles:
+                          card:
+                            - background: var(--primary-color)
+                          icon:
+                            - color: var(--text-primary-color)
+                  - type: custom:button-card
+                    template: vmc_btn
+                    icon: mdi:plus
+                    tap_action:
+                      action: call-service
+                      service: fan.increase_speed
+                      data:
+                        entity_id: fan.vmc_camera
+
+  # =================== GRAFICI ===================
+  - title: Grafici
+    path: vmc-grafici
+    icon: mdi:chart-line
+    type: sections
+    max_columns: 2
+    sections:
+
+      # ---- oggi, a tutta larghezza ----
+      - type: grid
+        column_span: 2
+        cards:
+          - type: heading
+            heading: Ultime 24 ore
+            icon: mdi:clock-outline
+          - type: history-graph
+            title: Umidità interna
+            hours_to_show: 24
+            grid_options:
+              columns: full
+            entities:
+              - entity: sensor.vmc_salone_umidita_interna
+                name: Salone
+              - entity: sensor.vmc_cucina_umidita_interna
+                name: Cucina
+              - entity: sensor.vmc_cameretta_umidita_interna
+                name: Cameretta
+              - entity: sensor.vmc_camera_umidita_interna
+                name: Camera
+          - type: history-graph
+            title: Temperatura interna e esterna
+            hours_to_show: 24
+            grid_options:
+              columns: full
+            entities:
+              - entity: sensor.vmc_salone_temperatura_interna
+                name: Salone
+              - entity: sensor.vmc_cucina_temperatura_interna
+                name: Cucina
+              - entity: sensor.vmc_cameretta_temperatura_interna
+                name: Cameretta
+              - entity: sensor.vmc_camera_temperatura_interna
+                name: Camera
+              - entity: sensor.vmc_salone_temperatura_esterna
+                name: Esterno
+
+      # ---- settimana ----
+      - type: grid
+        cards:
+          - type: heading
+            heading: Ultimi 7 giorni · media oraria
+            icon: mdi:calendar-week
+          - type: statistics-graph
+            title: Umidità interna
+            chart_type: line
+            period: hour
+            days_to_show: 7
+            stat_types: [mean]
+            grid_options:
+              columns: full
+            entities:
+              - entity: sensor.vmc_salone_umidita_interna
+                name: Salone
+              - entity: sensor.vmc_cucina_umidita_interna
+                name: Cucina
+              - entity: sensor.vmc_cameretta_umidita_interna
+                name: Cameretta
+              - entity: sensor.vmc_camera_umidita_interna
+                name: Camera
+          - type: statistics-graph
+            title: Temperatura
+            chart_type: line
+            period: hour
+            days_to_show: 7
+            stat_types: [mean]
+            grid_options:
+              columns: full
+            entities:
+              - entity: sensor.vmc_salone_temperatura_interna
+                name: Salone
+              - entity: sensor.vmc_cucina_temperatura_interna
+                name: Cucina
+              - entity: sensor.vmc_cameretta_temperatura_interna
+                name: Cameretta
+              - entity: sensor.vmc_camera_temperatura_interna
+                name: Camera
+              - entity: sensor.vmc_salone_temperatura_esterna
+                name: Esterno
+
+      # ---- mese ----
+      - type: grid
+        cards:
+          - type: heading
+            heading: Ultimi 30 giorni · media giornaliera
+            icon: mdi:calendar-month
+          - type: statistics-graph
+            title: Umidità interna
+            chart_type: line
+            period: day
+            days_to_show: 30
+            stat_types: [mean]
+            grid_options:
+              columns: full
+            entities:
+              - entity: sensor.vmc_salone_umidita_interna
+                name: Salone
+              - entity: sensor.vmc_cucina_umidita_interna
+                name: Cucina
+              - entity: sensor.vmc_cameretta_umidita_interna
+                name: Cameretta
+              - entity: sensor.vmc_camera_umidita_interna
+                name: Camera
+          - type: statistics-graph
+            title: Temperatura
+            chart_type: line
+            period: day
+            days_to_show: 30
+            stat_types: [mean]
+            grid_options:
+              columns: full
+            entities:
+              - entity: sensor.vmc_salone_temperatura_interna
+                name: Salone
+              - entity: sensor.vmc_cucina_temperatura_interna
+                name: Cucina
+              - entity: sensor.vmc_cameretta_temperatura_interna
+                name: Cameretta
+              - entity: sensor.vmc_camera_temperatura_interna
+                name: Camera
+              - entity: sensor.vmc_salone_temperatura_esterna
+                name: Esterno
+
+  # ----- dettaglio Salone -----
+  - title: Salone
+    path: vmc-salone
+    subview: true
+    icon: mdi:chart-line
+    type: sections
+    max_columns: 2
+    sections:
+      - type: grid
+        column_span: 2
+        cards:
+          - type: heading
+            heading: Salone · ultime 24 ore
+            icon: mdi:clock-outline
+          - type: history-graph
+            title: Umidità interna
+            hours_to_show: 24
+            grid_options:
+              columns: full
+            entities:
+              - entity: sensor.vmc_salone_umidita_interna
+                name: Salone
+          - type: history-graph
+            title: Temperatura
+            hours_to_show: 24
+            grid_options:
+              columns: full
+            entities:
+              - entity: sensor.vmc_salone_temperatura_interna
+                name: Interna
+              - entity: sensor.vmc_salone_temperatura_esterna
+                name: Esterna
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Ultimi 7 giorni · per ora
+            icon: mdi:calendar-week
+          - type: statistics-graph
+            title: Umidità interna · media, minimo, massimo
+            chart_type: line
+            period: hour
+            days_to_show: 7
+            stat_types: [mean, min, max]
+            grid_options:
+              columns: full
+            entities:
+              - entity: sensor.vmc_salone_umidita_interna
+                name: Salone
+          - type: statistics-graph
+            title: Temperatura · media
+            chart_type: line
+            period: hour
+            days_to_show: 7
+            stat_types: [mean]
+            grid_options:
+              columns: full
+            entities:
+              - entity: sensor.vmc_salone_temperatura_interna
+                name: Interna
+              - entity: sensor.vmc_salone_temperatura_esterna
+                name: Esterna
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Ultimi 30 giorni · per giorno
+            icon: mdi:calendar-month
+          - type: statistics-graph
+            title: Umidità interna · media, minimo, massimo
+            chart_type: line
+            period: day
+            days_to_show: 30
+            stat_types: [mean, min, max]
+            grid_options:
+              columns: full
+            entities:
+              - entity: sensor.vmc_salone_umidita_interna
+                name: Salone
+          - type: statistics-graph
+            title: Temperatura · media
+            chart_type: line
+            period: day
+            days_to_show: 30
+            stat_types: [mean]
+            grid_options:
+              columns: full
+            entities:
+              - entity: sensor.vmc_salone_temperatura_interna
+                name: Interna
+              - entity: sensor.vmc_salone_temperatura_esterna
+                name: Esterna
+
+  # ----- dettaglio Cucina -----
+  - title: Cucina
+    path: vmc-cucina
+    subview: true
+    icon: mdi:chart-line
+    type: sections
+    max_columns: 2
+    sections:
+      - type: grid
+        column_span: 2
+        cards:
+          - type: heading
+            heading: Cucina · ultime 24 ore
+            icon: mdi:clock-outline
+          - type: history-graph
+            title: Umidità interna
+            hours_to_show: 24
+            grid_options:
+              columns: full
+            entities:
+              - entity: sensor.vmc_cucina_umidita_interna
+                name: Cucina
+          - type: history-graph
+            title: Temperatura
+            hours_to_show: 24
+            grid_options:
+              columns: full
+            entities:
+              - entity: sensor.vmc_cucina_temperatura_interna
+                name: Interna
+              - entity: sensor.vmc_cucina_temperatura_esterna
+                name: Esterna
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Ultimi 7 giorni · per ora
+            icon: mdi:calendar-week
+          - type: statistics-graph
+            title: Umidità interna · media, minimo, massimo
+            chart_type: line
+            period: hour
+            days_to_show: 7
+            stat_types: [mean, min, max]
+            grid_options:
+              columns: full
+            entities:
+              - entity: sensor.vmc_cucina_umidita_interna
+                name: Cucina
+          - type: statistics-graph
+            title: Temperatura · media
+            chart_type: line
+            period: hour
+            days_to_show: 7
+            stat_types: [mean]
+            grid_options:
+              columns: full
+            entities:
+              - entity: sensor.vmc_cucina_temperatura_interna
+                name: Interna
+              - entity: sensor.vmc_cucina_temperatura_esterna
+                name: Esterna
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Ultimi 30 giorni · per giorno
+            icon: mdi:calendar-month
+          - type: statistics-graph
+            title: Umidità interna · media, minimo, massimo
+            chart_type: line
+            period: day
+            days_to_show: 30
+            stat_types: [mean, min, max]
+            grid_options:
+              columns: full
+            entities:
+              - entity: sensor.vmc_cucina_umidita_interna
+                name: Cucina
+          - type: statistics-graph
+            title: Temperatura · media
+            chart_type: line
+            period: day
+            days_to_show: 30
+            stat_types: [mean]
+            grid_options:
+              columns: full
+            entities:
+              - entity: sensor.vmc_cucina_temperatura_interna
+                name: Interna
+              - entity: sensor.vmc_cucina_temperatura_esterna
+                name: Esterna
+
+  # ----- dettaglio Cameretta -----
+  - title: Cameretta
+    path: vmc-cameretta
+    subview: true
+    icon: mdi:chart-line
+    type: sections
+    max_columns: 2
+    sections:
+      - type: grid
+        column_span: 2
+        cards:
+          - type: heading
+            heading: Cameretta · ultime 24 ore
+            icon: mdi:clock-outline
+          - type: history-graph
+            title: Umidità interna
+            hours_to_show: 24
+            grid_options:
+              columns: full
+            entities:
+              - entity: sensor.vmc_cameretta_umidita_interna
+                name: Cameretta
+          - type: history-graph
+            title: Temperatura
+            hours_to_show: 24
+            grid_options:
+              columns: full
+            entities:
+              - entity: sensor.vmc_cameretta_temperatura_interna
+                name: Interna
+              - entity: sensor.vmc_cameretta_temperatura_esterna
+                name: Esterna
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Ultimi 7 giorni · per ora
+            icon: mdi:calendar-week
+          - type: statistics-graph
+            title: Umidità interna · media, minimo, massimo
+            chart_type: line
+            period: hour
+            days_to_show: 7
+            stat_types: [mean, min, max]
+            grid_options:
+              columns: full
+            entities:
+              - entity: sensor.vmc_cameretta_umidita_interna
+                name: Cameretta
+          - type: statistics-graph
+            title: Temperatura · media
+            chart_type: line
+            period: hour
+            days_to_show: 7
+            stat_types: [mean]
+            grid_options:
+              columns: full
+            entities:
+              - entity: sensor.vmc_cameretta_temperatura_interna
+                name: Interna
+              - entity: sensor.vmc_cameretta_temperatura_esterna
+                name: Esterna
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Ultimi 30 giorni · per giorno
+            icon: mdi:calendar-month
+          - type: statistics-graph
+            title: Umidità interna · media, minimo, massimo
+            chart_type: line
+            period: day
+            days_to_show: 30
+            stat_types: [mean, min, max]
+            grid_options:
+              columns: full
+            entities:
+              - entity: sensor.vmc_cameretta_umidita_interna
+                name: Cameretta
+          - type: statistics-graph
+            title: Temperatura · media
+            chart_type: line
+            period: day
+            days_to_show: 30
+            stat_types: [mean]
+            grid_options:
+              columns: full
+            entities:
+              - entity: sensor.vmc_cameretta_temperatura_interna
+                name: Interna
+              - entity: sensor.vmc_cameretta_temperatura_esterna
+                name: Esterna
+
+  # ----- dettaglio Camera -----
+  - title: Camera
+    path: vmc-camera
+    subview: true
+    icon: mdi:chart-line
+    type: sections
+    max_columns: 2
+    sections:
+      - type: grid
+        column_span: 2
+        cards:
+          - type: heading
+            heading: Camera · ultime 24 ore
+            icon: mdi:clock-outline
+          - type: history-graph
+            title: Umidità interna
+            hours_to_show: 24
+            grid_options:
+              columns: full
+            entities:
+              - entity: sensor.vmc_camera_umidita_interna
+                name: Camera
+          - type: history-graph
+            title: Temperatura
+            hours_to_show: 24
+            grid_options:
+              columns: full
+            entities:
+              - entity: sensor.vmc_camera_temperatura_interna
+                name: Interna
+              - entity: sensor.vmc_camera_temperatura_esterna
+                name: Esterna
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Ultimi 7 giorni · per ora
+            icon: mdi:calendar-week
+          - type: statistics-graph
+            title: Umidità interna · media, minimo, massimo
+            chart_type: line
+            period: hour
+            days_to_show: 7
+            stat_types: [mean, min, max]
+            grid_options:
+              columns: full
+            entities:
+              - entity: sensor.vmc_camera_umidita_interna
+                name: Camera
+          - type: statistics-graph
+            title: Temperatura · media
+            chart_type: line
+            period: hour
+            days_to_show: 7
+            stat_types: [mean]
+            grid_options:
+              columns: full
+            entities:
+              - entity: sensor.vmc_camera_temperatura_interna
+                name: Interna
+              - entity: sensor.vmc_camera_temperatura_esterna
+                name: Esterna
+
+      - type: grid
+        cards:
+          - type: heading
+            heading: Ultimi 30 giorni · per giorno
+            icon: mdi:calendar-month
+          - type: statistics-graph
+            title: Umidità interna · media, minimo, massimo
+            chart_type: line
+            period: day
+            days_to_show: 30
+            stat_types: [mean, min, max]
+            grid_options:
+              columns: full
+            entities:
+              - entity: sensor.vmc_camera_umidita_interna
+                name: Camera
+          - type: statistics-graph
+            title: Temperatura · media
+            chart_type: line
+            period: day
+            days_to_show: 30
+            stat_types: [mean]
+            grid_options:
+              columns: full
+            entities:
+              - entity: sensor.vmc_camera_temperatura_interna
+                name: Interna
+              - entity: sensor.vmc_camera_temperatura_esterna
+                name: Esterna

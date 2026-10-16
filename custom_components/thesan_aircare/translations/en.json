@@ -1,0 +1,21 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Thesan Aircare",
+        "description": "Inserisci le credenziali dell'app Aircare.",
+        "data": {
+          "email": "Email",
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Email o password non validi.",
+      "cannot_connect": "Impossibile connettersi al cloud Thesan."
+    },
+    "abort": {
+      "already_configured": "Questo account e' gia' configurato."
+    }
+  }
+}
