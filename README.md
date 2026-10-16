@@ -75,3 +75,5 @@ the integration recovers automatically. Avoid manual logins and repeated reloads
 account block). Example dashboard in `dashboards/` (needs *button-card*).
 
 Independent project, not affiliated with Savio, Thesan or Domotica Labs. MIT licence.
+# hass-thesan-aircare
+# hass-thesan-aircare
