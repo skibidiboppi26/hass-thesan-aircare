@@ -3,10 +3,10 @@
   "name": "Thesan Aircare VMC",
   "version": "1.3.0",
   "config_flow": true,
-  "documentation": "https://github.com/skibiboppi26/hass-thesan-aircare",
-  "issue_tracker": "https://github.com/skibiboppi26/hass-thesan-aircare/issues",
+  "documentation": "https://github.com/skibidiboppi26/hass-thesan-aircare",
+  "issue_tracker": "https://github.com/skibidiboppi26/hass-thesan-aircare/issues",
   "codeowners": [
-    "@skibiboppi26"
+    "@skibidiboppi26"
   ],
   "dependencies": [],
   "requirements": [

@@ -23,7 +23,7 @@ Controllo di velocità e modalità, lettura di temperatura e umidità interna/es
 
 ### Installazione con HACS (consigliata)
 1. HACS → tre puntini in alto a destra → **Repository personalizzati**
-2. URL: `https://github.com/skibiboppi26/hass-thesan-aircare` · Tipo: **Integration** → Aggiungi
+2. URL: `https://github.com/skibidiboppi26/hass-thesan-aircare` · Tipo: **Integration** → Aggiungi
 3. Cerca "Thesan Aircare VMC" → **Scarica** → riavvia Home Assistant
 4. Impostazioni → Dispositivi e servizi → **Aggiungi integrazione** → "Thesan Aircare"
 5. Inserisci **email e password dell'app Aircare**. Le VMC compaiono con i nomi dati nell'app.
@@ -66,7 +66,7 @@ outdoor temperature and humidity, filter counter, connectivity diagnostics. Real
 MQTT with REST fallback. The integration periodically sends the `transmit` wake‑up command, exactly
 like the official app does, so data keeps flowing with the app closed.
 
-**Install (HACS)**: HACS → ⋮ → Custom repositories → `https://github.com/skibiboppi26/hass-thesan-aircare`,
+**Install (HACS)**: HACS → ⋮ → Custom repositories → `https://github.com/skibidiboppi26/hass-thesan-aircare`,
 type *Integration* → Download → restart → Settings → Devices & services → Add integration →
 "Thesan Aircare" → your Aircare app e‑mail and password.
 
