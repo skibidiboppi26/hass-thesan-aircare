@@ -1,4 +1,4 @@
-# Thesan Aircare VMC — integrazione Home Assistant (v1.4.2)
+# Thesan Aircare VMC — integrazione Home Assistant (v1.5.0)
 
 Controllo delle VMC Savio/Thesan Aircare ES (backend cloud Domotica Labs).
 
@@ -30,6 +30,27 @@ Aggiornando da una versione precedente **non** serve reinserire le credenziali.
 | `sensor.vmc_<stanza>_umidita_interna/esterna` | % |
 | `sensor.vmc_<stanza>_stato_filtro` | contatore filtro (`d_filter`) |
 | `binary_sensor.vmc_<stanza>_connesso` | diagnostica: la VMC è vista dal cloud e letta correttamente; attributi `ultimo_errore`, `ultima_lettura_ok` |
+
+## Collegamento locale (v1.5.0)
+
+Ogni Aircare ha un piccolo server web in rete di casa: `GET /speed`, `/mode`, `/temp_int`,
+`/temp_ext`, `/hr_int`, `/d_filter` leggono il valore, `POST` con il valore nel corpo lo
+imposta (velocità e modalità). `/esp_serial` restituisce il seriale della macchina.
+
+- **Abbinamento**: Impostazioni → Dispositivi e servizi → Thesan Aircare → *Configura*.
+  Il componente cerca le macchine in rete e per ogni VMC si sceglie la sua (indirizzo,
+  velocità e temperatura aiutano a riconoscerla). "Solo cloud" lascia tutto com'era.
+- **A regime**: velocità e modalità lette ogni 15 s, temperature, umidità e filtro ogni
+  minuto. I comandi vanno alla macchina; se non risponde, ripiegano sul cloud.
+- **Cloud a riposo**: finché tutte le VMC rispondono in casa non partono sveglie né
+  letture REST, e ciò che il cloud dice sullo stato online non conta.
+- **Cambio di indirizzo IP**: la macchina è riconosciuta dal seriale. Dopo tre letture
+  fallite (o se all'indirizzo risponde un altro seriale) viene ricercata in rete.
+- **Avvio senza cloud**: l'elenco delle VMC è salvato in locale, quindi l'integrazione
+  parte anche se il cloud è fermo.
+- L'umidità esterna non è disponibile in locale.
+- Attributi diagnostici in più: `indirizzo_locale`, `ultima_lettura_locale`;
+  `fonte_ultimo_dato` vale `locale`.
 
 ## Comportamento a regime (perché "funziona sempre")
 

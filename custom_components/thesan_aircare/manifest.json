@@ -1,7 +1,7 @@
 {
   "domain": "thesan_aircare",
   "name": "Thesan Aircare VMC",
-  "version": "1.4.2",
+  "version": "1.5.0",
   "config_flow": true,
   "documentation": "https://github.com/skibidiboppi26/hass-thesan-aircare",
   "issue_tracker": "https://github.com/skibidiboppi26/hass-thesan-aircare/issues",
@@ -12,5 +12,5 @@
   "requirements": [
     "paho-mqtt>=1.6.1"
   ],
-  "iot_class": "cloud_push"
+  "iot_class": "local_polling"
 }

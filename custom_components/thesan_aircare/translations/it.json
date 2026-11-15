@@ -17,5 +17,19 @@
     "abort": {
       "already_configured": "Questo account e' gia' configurato."
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Collegamento locale",
+        "description": "Per ogni VMC scegli la macchina trovata in rete di casa: letture e comandi andranno diretti, senza cloud. \"Solo cloud\" lascia tutto com'era."
+      }
+    },
+    "error": {
+      "duplicate": "La stessa macchina e' stata scelta per due VMC."
+    },
+    "abort": {
+      "not_loaded": "L'integrazione non e' caricata: riprova tra poco."
+    }
   }
 }

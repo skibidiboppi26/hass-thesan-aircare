@@ -11,10 +11,13 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_call_later, async_track_time_interval
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
+from . import local as vmc_local
 from .api import (
     AircareApiError,
     AircareAuthError,
@@ -34,10 +37,15 @@ from . import sensor as _sensor  # noqa: F401, E402
 
 from .const import (
     CONF_EMAIL,
+    CONF_LOCAL,
     CONF_PASSWORD,
     DEFAULT_SCAN_INTERVAL,
     DISCOVERY_EVERY_N_POLLS,
     DOMAIN,
+    LOCAL_EVERY,
+    LOCAL_FAIL_RESCAN,
+    LOCAL_RESCAN_GAP,
+    LOCAL_SLOW_EVERY_N,
     MQTT_RESTART_GAPS,
     OFFLINE_AFTER,
     OPTIMISTIC_TTL,
@@ -116,10 +124,30 @@ class AircareCoordinator(DataUpdateCoordinator[dict[str, dict]]):
         self.mqtt_restarts = 0                        # sessioni MQTT riaperte da noi
         self._silent_restarts = 0                     # riaperture nel silenzio in corso
         self._last_mqtt_restart = 0.0
+        # rete locale
+        self._store = Store(hass, 1, f"{DOMAIN}.{entry.entry_id}") if entry else None
+        self._hosts: dict[str, str] = {}              # seriale -> indirizzo IP
+        self.local_serial: dict[str, str] = {}        # uuid -> seriale
+        self.last_local_ts: dict[str, float] = {}     # uuid -> epoch ultima lettura locale
+        self._local_fails: dict[str, int] = {}
+        self._local_cycle = 0
+        self._local_busy = False
+        self._last_local_scan = 0.0
+        self._unsub_local = None
 
     # ----------------------------------------------------------- setup
     async def async_setup(self) -> None:
-        things = await self.client.async_get_things()
+        saved = (await self._store.async_load()) or {}
+        self._hosts = dict(saved.get("hosts") or {})
+        try:
+            things = await self.client.async_get_things()
+        except AircareApiError as err:
+            # cloud giu' all'avvio: si parte con le VMC gia' note (i dati arrivano in locale)
+            things = self._cached_things(saved)
+            if not things:
+                raise
+            _LOGGER.warning("Aircare: cloud non raggiungibile all'avvio (%s): parto con le "
+                            "%d VMC gia' note", err, len(things))
         for t in things:
             uuid = t["uuid"]
             self.labels[uuid] = t.get("label") or uuid[:8]
@@ -133,6 +161,15 @@ class AircareCoordinator(DataUpdateCoordinator[dict[str, dict]]):
                 self._last_good[uuid] = {**t, "connected": False}
         self.async_set_updated_data(copy.deepcopy(self._last_good))
         _LOGGER.info("Aircare: %d VMC trovate: %s", len(things), ", ".join(self.labels.values()))
+        self._save_store()
+        self.local_serial = {
+            u: s for u, s in (self.entry.options.get(CONF_LOCAL) or {}).items() if u in self.labels
+        }
+        if self.local_serial:
+            self._unsub_local = async_track_time_interval(
+                self.hass, self._async_local_tick, timedelta(seconds=LOCAL_EVERY)
+            )
+            await self._async_local_tick()
         await self._async_start_push()
         # sveglia periodica: senza, le VMC non pubblicano nulla
         self._unsub_transmit = async_track_time_interval(
@@ -151,9 +188,102 @@ class AircareCoordinator(DataUpdateCoordinator[dict[str, dict]]):
         except Exception as err:  # noqa: BLE001
             _LOGGER.warning("Aircare: MQTT push non avviato (%s); uso solo REST, ritento", err)
 
+    # ----------------------------------------------------------- locale
+    def _cached_things(self, saved: dict) -> list[dict]:
+        """Le VMC note dall'ultimo avvio riuscito (o dal registro dispositivi di HA)."""
+        labels = dict(saved.get("labels") or {})
+        if not labels:
+            reg = dr.async_get(self.hass)
+            for dev in dr.async_entries_for_config_entry(reg, self.entry.entry_id):
+                for dom, ident in dev.identifiers:
+                    if dom == DOMAIN:
+                        name = dev.name or ident[:8]
+                        labels[ident] = name[4:] if name.startswith("VMC ") else name
+        return [{"uuid": u, "label": l, "properties": []} for u, l in labels.items()]
+
+    def _save_store(self) -> None:
+        if self._store:
+            self._store.async_delay_save(
+                lambda: {"labels": dict(self.labels), "hosts": dict(self._hosts)}, 5
+            )
+
+    def set_hosts(self, hosts: dict[str, str]) -> None:
+        """Indirizzi trovati da una ricerca in rete ({seriale: IP})."""
+        self._hosts.update(hosts)
+        self._save_store()
+
+    def local_host(self, uuid: str) -> str | None:
+        return self._hosts.get(self.local_serial.get(uuid, ""))
+
+    def _local_fresh(self, uuid: str, now: float | None = None) -> bool:
+        return (now or time.time()) - self.last_local_ts.get(uuid, 0) <= OFFLINE_AFTER
+
+    def _all_local(self) -> bool:
+        """Tutte le VMC stanno rispondendo in locale: il cloud non serve."""
+        return bool(self.labels) and all(self._local_fresh(u) for u in self.labels)
+
+    async def _async_local_tick(self, _now=None) -> None:
+        """Legge le VMC in rete locale; se una non risponde piu', la ricerca per seriale."""
+        if self._local_busy:
+            return
+        self._local_busy = True
+        try:
+            self._local_cycle += 1
+            slow = self._local_cycle % LOCAL_SLOW_EVERY_N == 1
+            pids = vmc_local.FAST_PIDS + (vmc_local.SLOW_PIDS if slow else ())
+            todo = [(u, s, self._hosts.get(s)) for u, s in self.local_serial.items()]
+            reach = [t for t in todo if t[2]]
+            missing = [s for _, s, h in todo if not h]
+            results = await asyncio.gather(
+                *(self.hass.async_add_executor_job(vmc_local.poll, h, s if slow else None, pids)
+                  for _, s, h in reach),
+                return_exceptions=True,
+            )
+            now = time.time()
+            changed = False
+            for (uuid, serial, host), res in zip(reach, results):
+                if isinstance(res, BaseException):
+                    fails = self._local_fails[uuid] = self._local_fails.get(uuid, 0) + 1
+                    _LOGGER.debug("Aircare: lettura locale di %s (%s) fallita: %s",
+                                  self.labels.get(uuid, uuid[:8]), host, res)
+                    if isinstance(res, vmc_local.WrongDevice) or fails >= LOCAL_FAIL_RESCAN:
+                        self._hosts.pop(serial, None)
+                        missing.append(serial)
+                    continue
+                self._local_fails[uuid] = 0
+                self._apply_local(uuid, res, now)
+                changed = True
+            if missing and now - self._last_local_scan >= LOCAL_RESCAN_GAP:
+                self._last_local_scan = now
+                found = await self.hass.async_add_executor_job(vmc_local.scan)
+                back = {s: h for s, h in found.items() if s in missing}
+                if back:
+                    _LOGGER.info("Aircare: VMC ritrovate in rete locale: %s", ", ".join(back.values()))
+                    self.set_hosts(back)
+            if changed:
+                self.async_set_updated_data(self._compose())
+        finally:
+            self._local_busy = False
+
+    @callback
+    def _apply_local(self, uuid: str, values: dict[str, str], now: float) -> None:
+        thing = self._last_good.setdefault(uuid, {"uuid": uuid, "properties": []})
+        for pid, raw in values.items():
+            value = parse_report_value(raw)
+            if not self._suspicious_zero(thing, pid, value):
+                set_prop_value(thing, pid, value)
+        thing["connected"] = True
+        self._online[uuid] = True
+        self.last_good_ts[uuid] = now
+        self.last_local_ts[uuid] = now
+        self.last_source[uuid] = "locale"
+        self.device_reason.pop(uuid, None)
+
     # ---------------------------------------------------------- sveglia
     async def _async_transmit_tick(self, _now=None) -> None:
         """Valuta chi ha risposto, poi chiede alle VMC di trasmettere (come l'app)."""
+        if self._all_local():
+            return  # rispondono tutte in casa: niente sveglie ne' giudizi dal cloud
         if self._evaluate_online():
             await self._async_restart_push()
         if not self.client.mqtt_connected:
@@ -297,6 +427,12 @@ class AircareCoordinator(DataUpdateCoordinator[dict[str, dict]]):
             await self._async_rediscover()
             uuids = list(self.labels)
 
+        if self._all_local():
+            # le letture locali sono piu' fresche della cache del cloud: non serve il REST
+            self.failed_cycles = 0
+            self.last_error = None
+            return self._compose()
+
         results = await asyncio.gather(
             *(self.client.async_get_thing(u) for u in uuids), return_exceptions=True
         )
@@ -319,6 +455,9 @@ class AircareCoordinator(DataUpdateCoordinator[dict[str, dict]]):
                 empty += 1
                 self.device_reason[uuid] = "snapshot vuoto (nessun dato dalla macchina)"
                 _LOGGER.debug("Aircare: snapshot vuoto per %s, tengo l'ultimo valido", label)
+                continue
+            if self._local_fresh(uuid, now):
+                ok += 1      # la lettura locale e' piu' fresca: il REST non la sovrascrive
                 continue
             prev = self._last_good.get(uuid)
             for pid in ("temp_int", "temp_ext", "hr_int", "hr_ext"):
@@ -407,9 +546,19 @@ class AircareCoordinator(DataUpdateCoordinator[dict[str, dict]]):
     # --------------------------------------------------------- commands
     async def async_send_command(self, uuid: str, pid: str, value) -> None:
         """Invia un comando e mostra subito il nuovo stato, poi verifica col cloud."""
-        await self.hass.async_add_executor_job(
-            self.client.set_property, uuid, pid, value
-        )
+        host = self.local_host(uuid)
+        sent = False
+        if host:
+            try:
+                await self.hass.async_add_executor_job(vmc_local.write, host, pid, value)
+                sent = True
+            except vmc_local.LocalError as err:
+                _LOGGER.warning("Aircare: comando locale a %s fallito (%s): provo dal cloud",
+                                self.labels.get(uuid, uuid[:8]), err)
+        if not sent:
+            await self.hass.async_add_executor_job(
+                self.client.set_property, uuid, pid, value
+            )
         self._optimistic.setdefault(uuid, {})[pid] = (value, time.time() + OPTIMISTIC_TTL)
         self.async_set_updated_data(self._compose())
         # rilettura differita (un solo timer alla volta)
@@ -421,6 +570,8 @@ class AircareCoordinator(DataUpdateCoordinator[dict[str, dict]]):
 
     async def _delayed_refresh(self, _now) -> None:
         self._refresh_handle = None
+        if self.local_serial:
+            await self._async_local_tick()
         await self.async_request_refresh()
 
     # ------------------------------------------------------------ helpers
@@ -428,6 +579,8 @@ class AircareCoordinator(DataUpdateCoordinator[dict[str, dict]]):
         """Connessa se ha mandato report da poco; altrimenti decidono i segnali del
         cloud (topic online, campo connected del REST) e l'eta' dei dati.
         """
+        if self._local_fresh(uuid):
+            return True      # risponde in rete locale: e' accesa, qualunque cosa dica il cloud
         if time.time() - self.last_push_ts.get(uuid, 0) <= OFFLINE_AFTER:
             return True
         if self._online.get(uuid) is False:
@@ -459,8 +612,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     except AircareAuthError as err:
         raise ConfigEntryAuthFailed(str(err)) from err
     except AircareApiError as err:
-        # errore temporaneo: HA riprova da solo con il suo backoff
-        raise ConfigEntryNotReady(str(err)) from err
+        # cloud giu': si prova lo stesso, le VMC note rispondono in rete locale
+        _LOGGER.warning("Aircare: login al cloud non riuscito (%s)", err)
 
     coordinator = AircareCoordinator(hass, entry, client)
     try:
@@ -472,7 +625,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    entry.async_on_unload(entry.add_update_listener(_async_options_updated))
     return True
+
+
+async def _async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Opzioni cambiate (abbinamento locale): si ricarica l'integrazione."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -483,6 +642,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             coordinator._refresh_handle()
         if coordinator._unsub_transmit:
             coordinator._unsub_transmit()
+        if coordinator._unsub_local:
+            coordinator._unsub_local()
         if coordinator._transmit_check_handle:
             coordinator._transmit_check_handle()
         await hass.async_add_executor_job(coordinator.client.disconnect)

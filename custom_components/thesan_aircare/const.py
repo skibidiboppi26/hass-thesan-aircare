@@ -44,6 +44,14 @@ OFFLINE_AFTER = 75
 # riprende da sola in uno o due minuti.
 MQTT_RESTART_GAPS = (600, 900, 1800)
 
+# --- Rete locale ---
+# Le VMC rispondono anche in casa (HTTP): letture e comandi senza passare dal cloud.
+CONF_LOCAL = "local"            # opzioni: {uuid: seriale ESP della macchina}
+LOCAL_EVERY = 15                # secondi tra due letture locali (velocita' e modalita')
+LOCAL_SLOW_EVERY_N = 4          # ogni 4 giri (1 min) anche temperature, umidita', filtro e seriale
+LOCAL_FAIL_RESCAN = 3           # letture fallite di fila prima di ricercare la VMC in rete
+LOCAL_RESCAN_GAP = 120          # secondi minimi tra due ricerche in rete
+
 # --- Polling ---
 DEFAULT_SCAN_INTERVAL = 60       # REST di riconciliazione (lo stato live arriva via MQTT push)
 DISCOVERY_EVERY_N_POLLS = 10     # ogni ~10 min ricontrolla la lista VMC (nuove/rimosse)

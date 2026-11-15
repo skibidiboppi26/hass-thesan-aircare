@@ -17,5 +17,19 @@
     "abort": {
       "already_configured": "Questo account e' gia' configurato."
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Local connection",
+        "description": "For each unit pick the device found on your home network: reads and commands will go direct, without the cloud. \"Solo cloud\" keeps the previous behaviour."
+      }
+    },
+    "error": {
+      "duplicate": "The same device was picked for two units."
+    },
+    "abort": {
+      "not_loaded": "The integration is not loaded: try again shortly."
+    }
   }
 }

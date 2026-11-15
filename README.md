@@ -1,7 +1,7 @@
 # Thesan Aircare VMC — Home Assistant
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
-![Version](https://img.shields.io/badge/version-1.4.2-blue)
+![Version](https://img.shields.io/badge/version-1.5.0-blue)
 
 Integrazione **non ufficiale** per le VMC decentralizzate **Savio / Thesan Aircare ES** (versione Wi‑Fi, app "Aircare", backend cloud Domotica Labs).
 Controllo di velocità e modalità, lettura di temperatura e umidità interna/esterna, stato filtro, con aggiornamento in tempo reale.
@@ -19,6 +19,7 @@ Controllo di velocità e modalità, lettura di temperatura e umidità interna/es
 - **Sensori**: temperatura interna ed esterna (°C), umidità interna ed esterna (%), stato filtro
 - **Connesso** (diagnostica): la VMC risponde al cloud; attributi che spiegano cosa succede
 - Stato in **tempo reale** via MQTT; polling REST di riserva ogni 60 s
+- **Funziona anche senza cloud** (dalla 1.5.0): le VMC rispondono in rete di casa. Dopo l'abbinamento (Impostazioni → Dispositivi e servizi → Thesan Aircare → Configura) letture e comandi vanno diretti alle macchine; il cloud resta come riserva.
 - **Sveglia automatica** delle macchine: le Aircare trasmettono solo se sollecitate, come fa l'app ufficiale. L'integrazione se ne occupa da sola.
 - Nuove VMC aggiunte dall'app compaiono in HA entro ~10 minuti
 

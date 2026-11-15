@@ -80,6 +80,10 @@ class AircareConnected(AircareEntity, BinarySensorEntity):
         if ts:
             attrs["ultimo_dato_ok"] = _iso(ts)
             attrs["secondi_da_ultimo_dato"] = int(time.time() - ts)
+        attrs["indirizzo_locale"] = c.local_host(self._uuid)
+        lts = c.last_local_ts.get(self._uuid)
+        if lts:
+            attrs["ultima_lettura_locale"] = _iso(lts)
         attrs["tutte_in_silenzio"] = c.all_silent
         attrs["sessioni_mqtt_riaperte"] = c.mqtt_restarts
         pts = c.last_push_ts.get(self._uuid)
