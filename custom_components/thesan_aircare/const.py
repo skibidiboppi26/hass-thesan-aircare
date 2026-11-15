@@ -29,8 +29,12 @@ REPORT_PIDS = ("speed", "mode", "temp_int", "temp_ext", "hr_int", "hr_ext", "d_f
 # la considera offline. Qui si fa lo stesso, con cadenza piu' rilassata.
 TRANSMIT_PID = "transmit"
 TRANSMIT_VALUE = 10        # secondi di trasmissione richiesti alla macchina (come l'app)
-TRANSMIT_EVERY = 30        # ogni quanti secondi rimandare la sveglia
-TRANSMIT_TIMEOUT = 8       # secondi di attesa del report prima di dichiarare la VMC offline
+TRANSMIT_EVERY = 15        # ogni quanti secondi rimandare la sveglia (l'app: 10 s)
+TRANSMIT_TIMEOUT = 8       # secondi di attesa del report prima di dichiarare la VMC offline  (non piu' usato: vedi OFFLINE_AFTER)
+# Offline solo se da OFFLINE_AFTER secondi non arriva NESSUN report mentre le
+# sveglie partono: il cloud a volte consegna le risposte dopo 10-20 s, e giudicare
+# dopo una sola sveglia dava le VMC per disconnesse decine di volte al giorno.
+OFFLINE_AFTER = 75
 
 # --- Polling ---
 DEFAULT_SCAN_INTERVAL = 60       # REST di riconciliazione (lo stato live arriva via MQTT push)

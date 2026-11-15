@@ -9,7 +9,7 @@ from datetime import timedelta
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_call_later, async_track_time_interval
@@ -38,6 +38,7 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DISCOVERY_EVERY_N_POLLS,
     DOMAIN,
+    OFFLINE_AFTER,
     OPTIMISTIC_TTL,
     REFRESH_AFTER_COMMAND,
     REPORT_PIDS,
@@ -147,46 +148,47 @@ class AircareCoordinator(DataUpdateCoordinator[dict[str, dict]]):
 
     # ---------------------------------------------------------- sveglia
     async def _async_transmit_tick(self, _now=None) -> None:
-        """Chiede alle VMC di trasmettere per TRANSMIT_VALUE secondi (come l'app)."""
+        """Valuta chi ha risposto, poi chiede alle VMC di trasmettere (come l'app)."""
+        self._evaluate_online()
         if not self.client.mqtt_connected:
             await self._async_start_push()
-            if not self.client.mqtt_connected:
-                return
+        if not self.client.mqtt_connected:
+            return
         uuids = list(self.labels)
         sent = await self.hass.async_add_executor_job(
             self.client.request_transmit, uuids, TRANSMIT_VALUE
         )
         self.transmit_sent = sent
         self.last_transmit_ts = time.time()
-        if sent:
-            if self._transmit_check_handle:
-                self._transmit_check_handle()
-            self._transmit_check_handle = async_call_later(
-                self.hass, TRANSMIT_TIMEOUT, self._transmit_check
-            )
 
-    def _transmit_check(self, _now=None) -> None:
-        """Dopo la sveglia: chi non ha risposto e' offline (stesso criterio dell'app)."""
-        self._transmit_check_handle = None
-        sent_at = self.last_transmit_ts or 0
-        if not self.last_push_ts:
-            # il push non ha mai consegnato nulla: il problema e' la nostra sessione,
-            # non le macchine. Non si giudica nessuno.
+    @callback
+    def _evaluate_online(self) -> None:
+        """Offline solo se da OFFLINE_AFTER secondi non arriva nessun report.
+
+        Gira nel loop di HA (prima di ogni sveglia): niente scritture di stato da
+        altri thread. Una risposta in ritardo non conta come disconnessione.
+        """
+        if not self.last_push_ts or not self.last_transmit_ts or not self.client.mqtt_connected:
+            # il push non consegna nulla o la sessione e' giu': il problema e' nostro,
+            # non delle macchine. Non si giudica nessuno.
             return
+        now = time.time()
         changed = False
         for uuid in self.labels:
-            answered = (self.last_push_ts.get(uuid, 0) >= sent_at
-                        or self.last_good_ts.get(uuid, 0) >= sent_at)
-            if answered:
+            last = max(self.last_push_ts.get(uuid, 0), self.last_good_ts.get(uuid, 0))
+            if now - last <= OFFLINE_AFTER:
                 if self._online.get(uuid) is False:
                     _LOGGER.info("Aircare: %s di nuovo online", self.labels[uuid])
-                self._online[uuid] = True
-            else:
-                if self._online.get(uuid) is not False:
-                    _LOGGER.info("Aircare: %s non risponde alla sveglia: offline", self.labels[uuid])
+                    self._online[uuid] = True
                     changed = True
+            elif self._online.get(uuid) is not False:
+                _LOGGER.info("Aircare: %s non risponde da %d s: offline",
+                             self.labels[uuid], int(now - last))
                 self._online[uuid] = False
-                self.device_reason[uuid] = "nessun report dopo la sveglia (VMC spenta o senza WiFi)"
+                self.device_reason[uuid] = (
+                    f"nessun report da oltre {OFFLINE_AFTER} s (VMC spenta o senza WiFi)"
+                )
+                changed = True
         if changed:
             self.async_set_updated_data(self._compose())
 

@@ -1,4 +1,4 @@
-# Thesan Aircare VMC — integrazione Home Assistant (v1.4.0)
+# Thesan Aircare VMC — integrazione Home Assistant (v1.4.1)
 
 Controllo delle VMC Savio/Thesan Aircare ES (backend cloud Domotica Labs).
 
@@ -40,6 +40,12 @@ Aggiornando da una versione precedente **non** serve reinserire le credenziali.
 - **Disponibilità temporale**: una VMC è "connessa" finché ha dato un segno di vita
   (push o REST) negli ultimi 5 minuti e il cloud non l'ha dichiarata offline. I cicli
   REST vuoti non spengono più nulla se il push è vivo.
+- **Niente falsi "non disponibile"** (v1.4.1): la sveglia parte ogni 15 s e una VMC
+  passa offline solo se da oltre 75 s non arriva nessun report. Prima si giudicava dopo
+  una sola sveglia con 8 s di attesa, ma il cloud a volte consegna le risposte dopo
+  10-20 s: le VMC risultavano disconnesse decine di volte al giorno. Il controllo ora
+  gira nel loop di HA (prima un callback finiva in un thread esecutore e riempiva il
+  log di errori).
 
 - **Token su disco** (`/config/thesan_aircare_tokens.json`): i riavvii di HA riusano il
   token, niente login ripetuti. Il file si può cancellare in qualsiasi momento: al
