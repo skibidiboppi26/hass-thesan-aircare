@@ -35,6 +35,14 @@ TRANSMIT_TIMEOUT = 8       # secondi di attesa del report prima di dichiarare la
 # sveglie partono: il cloud a volte consegna le risposte dopo 10-20 s, e giudicare
 # dopo una sola sveglia dava le VMC per disconnesse decine di volte al giorno.
 OFFLINE_AFTER = 75
+# Se TUTTE le VMC tacciono insieme da OFFLINE_AFTER secondi il problema e' il cloud o
+# la sessione MQTT, non le macchine: nessuna va offline (resta STALE_AFTER, cosi' un
+# blackout vero si vede lo stesso). Solo se il silenzio dura a lungo si riapre la
+# sessione MQTT: dopo 10 minuti, poi dopo altri 15 e poi ogni 30. Non prima, perche'
+# riaprirla obbliga il broker a ri-autenticare l'utente e, quando il cloud ha problemi
+# di autenticazione, la sessione nuova non parte mentre quella vecchia di solito
+# riprende da sola in uno o due minuti.
+MQTT_RESTART_GAPS = (600, 900, 1800)
 
 # --- Polling ---
 DEFAULT_SCAN_INTERVAL = 60       # REST di riconciliazione (lo stato live arriva via MQTT push)

@@ -38,6 +38,7 @@ from .const import (
     DEFAULT_SCAN_INTERVAL,
     DISCOVERY_EVERY_N_POLLS,
     DOMAIN,
+    MQTT_RESTART_GAPS,
     OFFLINE_AFTER,
     OPTIMISTIC_TTL,
     REFRESH_AFTER_COMMAND,
@@ -111,6 +112,10 @@ class AircareCoordinator(DataUpdateCoordinator[dict[str, dict]]):
         self._transmit_check_handle = None
         self.last_transmit_ts: float | None = None    # ultima sveglia inviata
         self.transmit_sent = 0                        # publish riuscite all'ultima sveglia
+        self.all_silent = False                       # tutte le VMC zitte insieme (cloud/sessione)
+        self.mqtt_restarts = 0                        # sessioni MQTT riaperte da noi
+        self._silent_restarts = 0                     # riaperture nel silenzio in corso
+        self._last_mqtt_restart = 0.0
 
     # ----------------------------------------------------------- setup
     async def async_setup(self) -> None:
@@ -149,7 +154,8 @@ class AircareCoordinator(DataUpdateCoordinator[dict[str, dict]]):
     # ---------------------------------------------------------- sveglia
     async def _async_transmit_tick(self, _now=None) -> None:
         """Valuta chi ha risposto, poi chiede alle VMC di trasmettere (come l'app)."""
-        self._evaluate_online()
+        if self._evaluate_online():
+            await self._async_restart_push()
         if not self.client.mqtt_connected:
             await self._async_start_push()
         if not self.client.mqtt_connected:
@@ -161,18 +167,51 @@ class AircareCoordinator(DataUpdateCoordinator[dict[str, dict]]):
         self.transmit_sent = sent
         self.last_transmit_ts = time.time()
 
-    @callback
-    def _evaluate_online(self) -> None:
-        """Offline solo se da OFFLINE_AFTER secondi non arriva nessun report.
+    async def _async_restart_push(self) -> None:
+        """Riapre la sessione MQTT quando tutte le VMC tacciono insieme."""
+        self._last_mqtt_restart = time.time()
+        self._silent_restarts += 1
+        self.mqtt_restarts += 1
+        _LOGGER.info("Aircare: riapro la sessione MQTT (tentativo %d in questo silenzio)",
+                     self._silent_restarts)
+        try:
+            await self.hass.async_add_executor_job(self.client.restart_mqtt)
+        except Exception as err:  # noqa: BLE001
+            _LOGGER.warning("Aircare: riapertura MQTT fallita (%s); ritento alla prossima sveglia", err)
 
+    @callback
+    def _evaluate_online(self) -> bool:
+        """Decide chi e' offline; ritorna True se conviene riaprire la sessione MQTT.
+
+        - Offline solo se da OFFLINE_AFTER secondi non arriva nessun report: una
+          risposta in ritardo non conta come disconnessione.
+        - Se TUTTE le VMC tacciono insieme il problema e' il cloud o la sessione,
+          non le macchine: nessuna viene segnata offline (resta il limite
+          STALE_AFTER, cosi' un blackout vero si vede lo stesso). La sessione si
+          riapre solo se il silenzio dura a lungo (MQTT_RESTART_GAPS).
         Gira nel loop di HA (prima di ogni sveglia): niente scritture di stato da
-        altri thread. Una risposta in ritardo non conta come disconnessione.
+        altri thread.
         """
         if not self.last_push_ts or not self.last_transmit_ts or not self.client.mqtt_connected:
             # il push non consegna nulla o la sessione e' giu': il problema e' nostro,
             # non delle macchine. Non si giudica nessuno.
-            return
+            return False
         now = time.time()
+        if len(self.labels) > 1:
+            newest = max(self.last_push_ts.get(u, 0) for u in self.labels)
+            if now - newest > OFFLINE_AFTER:
+                if not self.all_silent:
+                    _LOGGER.info("Aircare: nessuna VMC risponde da %d s: problema del cloud "
+                                 "o della sessione MQTT, non delle macchine", int(now - newest))
+                    self.all_silent = True
+                    self.async_set_updated_data(self._compose())
+                gap = MQTT_RESTART_GAPS[min(self._silent_restarts, len(MQTT_RESTART_GAPS) - 1)]
+                # dall'inizio del silenzio o dall'ultima riapertura, se piu' recente
+                return now - max(newest, self._last_mqtt_restart) >= gap
+            if self.all_silent:
+                _LOGGER.info("Aircare: i report sono ripresi")
+                self.all_silent = False
+                self._silent_restarts = 0
         changed = False
         for uuid in self.labels:
             last = max(self.last_push_ts.get(uuid, 0), self.last_good_ts.get(uuid, 0))
@@ -191,6 +230,7 @@ class AircareCoordinator(DataUpdateCoordinator[dict[str, dict]]):
                 changed = True
         if changed:
             self.async_set_updated_data(self._compose())
+        return False
 
     @staticmethod
     def _suspicious_zero(thing: dict | None, pid: str, value) -> bool:
@@ -214,9 +254,16 @@ class AircareCoordinator(DataUpdateCoordinator[dict[str, dict]]):
         now = time.time()
         if pid == "__online__":
             online = str(raw).strip().lower() not in ("0", "false", "offline", "")
-            self._online[uuid] = online
             if online:
+                self._online[uuid] = True
                 self.last_push_ts[uuid] = now
+            elif now - self.last_push_ts.get(uuid, 0) <= OFFLINE_AFTER:
+                # il cloud la dice offline ma ha appena mandato dati: non ci si crede
+                _LOGGER.debug("Aircare: %s offline dal cloud ignorato (report di %d s fa)",
+                              self.labels[uuid], int(now - self.last_push_ts.get(uuid, 0)))
+            else:
+                self._online[uuid] = False
+                self.device_reason[uuid] = "il cloud la segnala offline e non manda report"
             _LOGGER.debug("Aircare: %s online=%s", self.labels[uuid], online)
         else:
             value = parse_report_value(raw)
@@ -378,7 +425,11 @@ class AircareCoordinator(DataUpdateCoordinator[dict[str, dict]]):
 
     # ------------------------------------------------------------ helpers
     def is_connected(self, uuid: str) -> bool:
-        """Connessa se il cloud non la dichiara offline e ha dati recenti (push o REST)."""
+        """Connessa se ha mandato report da poco; altrimenti decidono i segnali del
+        cloud (topic online, campo connected del REST) e l'eta' dei dati.
+        """
+        if time.time() - self.last_push_ts.get(uuid, 0) <= OFFLINE_AFTER:
+            return True
         if self._online.get(uuid) is False:
             return False
         thing = self._last_good.get(uuid)

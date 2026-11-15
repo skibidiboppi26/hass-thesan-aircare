@@ -420,6 +420,15 @@ class AircareClient:
                 _LOGGER.debug("Aircare: transmit a %s non inviato: %s", uuid[:8], err)
         return sent
 
+    def restart_mqtt(self) -> None:
+        """Chiude e riapre la sessione MQTT (bloccante: va eseguito in executor).
+
+        Serve quando paho crede la sessione viva ma il broker non consegna piu'
+        nulla: una sessione nuova rifa' anche le sottoscrizioni (in on_connect).
+        """
+        self.disconnect()
+        self._ensure_mqtt()
+
     def disconnect(self) -> None:
         with self._mqtt_lock:
             if self._mqtt_started:

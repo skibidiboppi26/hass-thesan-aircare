@@ -1,4 +1,4 @@
-# Thesan Aircare VMC — integrazione Home Assistant (v1.4.1)
+# Thesan Aircare VMC — integrazione Home Assistant (v1.4.2)
 
 Controllo delle VMC Savio/Thesan Aircare ES (backend cloud Domotica Labs).
 
@@ -46,6 +46,17 @@ Aggiornando da una versione precedente **non** serve reinserire le credenziali.
   10-20 s: le VMC risultavano disconnesse decine di volte al giorno. Il controllo ora
   gira nel loop di HA (prima un callback finiva in un thread esecutore e riempiva il
   log di errori).
+- **Cloud muto ≠ VMC spente** (v1.4.2): se *tutte* le VMC tacciono insieme da oltre
+  75 s il problema è il cloud o la sessione MQTT, non le macchine: nessuna viene segnata
+  offline. Se il silenzio supera i 5 minuti risultano comunque scollegate, così un
+  blackout vero si vede. Solo dopo 10 minuti di silenzio la sessione MQTT viene riaperta
+  (poi dopo altri 15 e ogni 30): non prima, perché riaprirla obbliga il broker a
+  ri-autenticare l'utente e, quando il cloud ha problemi di autenticazione, la sessione
+  nuova non parte mentre quella vecchia di solito riprende da sola. Con una sola VMC la
+  regola del silenzio collettivo non si applica.
+- **Il "sei offline" del cloud non basta** (v1.4.2): il messaggio offline del cloud e il
+  campo `connected: false` della lettura REST contano solo se anche i report tacciono da
+  75 s. Una VMC che ha appena mandato dati non risulta mai scollegata.
 
 - **Token su disco** (`/config/thesan_aircare_tokens.json`): i riavvii di HA riusano il
   token, niente login ripetuti. Il file si può cancellare in qualsiasi momento: al
@@ -90,6 +101,8 @@ Dashboard con "Non disponibile"? Apri `binary_sensor.vmc_<stanza>_connesso` → 
 | `ultimo_report_push` | ultimo messaggio MQTT ricevuto per questa VMC |
 | `cloud_autenticato` | `true` = token valido, nessun cooldown |
 | `ultima_sveglia` / `sveglie_inviate` | quando è partito l'ultimo `transmit` e a quante VMC |
+| `tutte_in_silenzio` | `true` = nessuna VMC risponde da oltre 75 s: problema del cloud o della sessione, non delle macchine |
+| `sessioni_mqtt_riaperte` | quante volte il componente ha riaperto la sessione MQTT dall'avvio |
 
 Nel log (Impostazioni → Sistema → Log, cerca `Aircare`) compare un avviso al primo
 ciclo fallito con lo stesso motivo, e un'informazione quando le letture riprendono.

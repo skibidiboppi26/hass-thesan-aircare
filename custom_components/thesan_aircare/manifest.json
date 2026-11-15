@@ -1,7 +1,7 @@
 {
   "domain": "thesan_aircare",
   "name": "Thesan Aircare VMC",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "config_flow": true,
   "documentation": "https://github.com/skibidiboppi26/hass-thesan-aircare",
   "issue_tracker": "https://github.com/skibidiboppi26/hass-thesan-aircare/issues",
